@@ -15,3 +15,15 @@ Two functions
 unsigned char p_bus_read( unsigned char Address) -> It will return the data bye <br>
 void p_bus_write(unsigned char Address, unsigned char Data) -> it will write data at the specific address
 
+
+You need the pico c-sdk
+
+To compile.
+
+cd PIO_parallel_bus
+mkdir build
+cd build
+cmake ..
+make
+
+just copy the p_bus.uf2 to the pico in load mode  or use the opencd method.
