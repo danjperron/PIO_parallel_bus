@@ -1,0 +1,123 @@
+.program p_bus
+.side_set 3
+
+.define public NOSELECT 7
+.define public CS  0b110
+.define public WR  0b101
+.define public RD  0b011
+
+.wrap_target
+loop:
+    // y will contents 0xffffffff00
+    set y,15        side NOSELECT
+    in y,4          side NOSELECT
+    in y,4          side NOSELECT
+    mov osr, !isr   side NOSELECT
+    out pindirs,32  side NOSELECT
+    // get r/w flag 
+    pull            side NOSELECT
+    mov x, osr      side NOSELECT
+    jmp !x ReadCommand side NOSELECT
+    // set pins dir all output
+    mov osr, !null  side NOSELECT
+    out pindirs,32  side NOSELECT
+    // get address and data
+    pull            side NOSELECT
+    mov x,osr       side NOSELECT
+    // output address and data
+    out pins,19     side NOSELECT
+    nop             side CS
+    nop             side (CS & WR) [3]
+    in pins,8      side (CS & WR)  
+    push            side NOSELECT  // dummy read for sync
+    jmp loop        side NOSELECT
+ReadCommand:
+    // get address and data
+    pull            side NOSELECT
+    mov x, osr      side NOSELECT
+    // output address and data
+    out pins,19     side NOSELECT
+    nop             side CS
+    nop             side (CS & RD) [3]
+    in pins,8      side (CS & RD)   
+    push            side NOSELECT
+.wrap
+
+
+
+% c-sdk {
+
+static inline void p_bus_init(PIO pio, uint sm, uint offset, uint base_pin, float frequency) {
+  // base_out = base_in = base_pin
+  // base_side  = base_pin + 16
+  int loop;
+
+
+ for(loop=0;loop<19;loop++)
+    pio_gpio_init(pio,base_pin+loop);
+
+  pio_sm_set_consecutive_pindirs(pio,sm,base_pin,19,true);
+  pio_sm_set_consecutive_pindirs(pio,sm,base_pin,8,false);
+
+
+  // 1. Define a config object
+  pio_sm_config config = p_bus_program_get_default_config(offset);
+
+
+
+
+  // 3. Set and initialize the input pins
+  sm_config_set_in_pins(&config, base_pin);
+
+  // 2. Set and initialize the output pins
+  sm_config_set_out_pins(&config,base_pin, 16);
+
+  sm_config_set_set_pins(&config, base_pin,16);
+
+
+  // 4. Set clock divider
+  if (frequency < 2000) {
+    frequency = 2000;
+  }
+  float clock_divider = (float) clock_get_hz(clk_sys) / frequency * 1000;
+  sm_config_set_clkdiv(&config, clock_divider);
+
+  // 5. Configure input shift register
+  // args: BOOL right_shift, BOOL auto_push, 1..32 push_threshold
+  sm_config_set_in_shift(&config, false, false, 32);
+
+  // 6. Configure output shift register
+  // args: BOOL right_shift, BOOL auto_push, 1..32 push_threshold
+  sm_config_set_out_shift(&config, true, false, 32);
+
+  // 7. Join the ISR & OSR
+  // PIO_FIFO_JOIN_NONE = 0, PIO_FIFO_JOIN_TX = 1, PIO_FIFO_JOIN_RX = 2
+  sm_config_set_fifo_join(&config, PIO_FIFO_JOIN_NONE);
+
+  // 8. set pin dirs mask
+  
+
+  uint32_t pin_dir_mask  = 0b1111111111111111111 << base_pin;
+  uint32_t pin_dir_value = 0b1111111111100000000 << base_pin;
+
+  pio_sm_set_pins_with_mask(pio,sm,pin_dir_value, pin_dir_value);
+  pio_sm_set_pindirs_with_mask(pio,sm,pin_dir_value,pin_dir_mask);
+
+  // 9. set sideset
+  sm_config_set_sideset_pins(&config, base_pin+16);
+  sm_config_set_sideset(&config, 3, false, false);
+
+  // 10. Apply the configuration
+  pio_sm_init(pio, sm, offset, &config);
+
+  // 11. Activate the State Machine
+  pio_sm_set_enabled(pio, sm, true);
+
+}
+  
+ static inline uint32_t p_bus_set(PIO pio, uint sm,uint32_t  rw, uint32_t v){
+    pio_sm_put_blocking(pio, sm, rw);
+    pio_sm_put_blocking(pio, sm, v);
+    return pio_sm_get_blocking(pio, sm);
+   }
+%}
