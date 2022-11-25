@@ -10,3 +10,8 @@ BASE GPIO 18. is RD read
 CS,RW and RD are enable low.
 
 
+Two functions
+
+unsigned char p_bus_read( unsigned char Address) -> It will return the data bye
+void p_bus_write(unsigned char Address, unsigned char Data) -> it will write data at the specific address
+
