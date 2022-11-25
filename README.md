@@ -26,4 +26,4 @@ cd build
 cmake ..
 make
 
-just copy the p_bus.uf2 to the pico in load mode  or use the opencd method.
+just copy the p_bus.uf2 to the pico in load mode  or use the openocd method.
