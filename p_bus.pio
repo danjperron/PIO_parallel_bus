@@ -8,38 +8,62 @@
 
 .wrap_target
 loop:
-    // y will contents 0xffffffff00
+    // set Address to OUT and DATA to IN
+    // use register  Y to shift twice 0xf into isr
     set y,15        side NOSELECT
     in y,4          side NOSELECT
     in y,4          side NOSELECT
-    mov osr, !isr   side NOSELECT
-    out pindirs,32  side NOSELECT
-    // get r/w flag 
+    
+    // 0xff became ~0xff into osr
+    mov osr, !isr     side NOSELECT
+    
+    // output 16 bits OSR, ONLY 8 MSB bits are valid
+    out pindirs,19  side NOSELECT
+    
+    // wait for user put
     pull            side NOSELECT
-    mov x, osr      side NOSELECT
-    jmp !x ReadCommand side NOSELECT
-    // set pins dir all output
+    
+    // save osr to x check for read or write
+    mov x, osr      side NOSELECT   // save it
+ 
+    // transfer osr to isr to reset the first 31 bits
+    mov isr,osr     side NOSELECT
+    in NULL,31      side NOSELECT   //zero bit 0..30
+    
+    // we need to copy isr  to register Y  to check if it is zero for read and not zero for write
+    mov y,isr       side NOSELECT   // save isr to y
+    jmp !y ReadCommand side NOSELECT
+
+    // ok this is write command
+     // set pins dir all output
     mov osr, !null  side NOSELECT
-    out pindirs,32  side NOSELECT
-    // get address and data
-    pull            side NOSELECT
-    mov x,osr       side NOSELECT
-    // output address and data
+    out pindirs,19  side NOSELECT
+    
+    // set Address and data output
+    mov osr,x       side NOSELECT
     out pins,19     side NOSELECT
+    // do the CS follow by WR
     nop             side CS
     nop             side (CS & WR) [3]
-    in pins,8      side (CS & WR)  
-    push            side NOSELECT  // dummy read for sync
+
+    // dummy push to sync
+    push            side NOSELECT
+
+    // loop back
     jmp loop        side NOSELECT
+
+    // this is the read command
 ReadCommand:
-    // get address and data
-    pull            side NOSELECT
-    mov x, osr      side NOSELECT
-    // output address and data
+    // set Address 
+    mov osr,x       side NOSELECT
     out pins,19     side NOSELECT
+
+    // do the CS, RD and get data
     nop             side CS
     nop             side (CS & RD) [3]
-    in pins,8      side (CS & RD)   
+    in pins,8       side (CS & RD)   
+
+    // get data
     push            side NOSELECT
 .wrap
 
@@ -70,16 +94,16 @@ static inline void p_bus_init(PIO pio, uint sm, uint offset, uint base_pin, floa
   sm_config_set_in_pins(&config, base_pin);
 
   // 2. Set and initialize the output pins
-  sm_config_set_out_pins(&config,base_pin, 16);
+  sm_config_set_out_pins(&config,base_pin, 19);
 
   sm_config_set_set_pins(&config, base_pin,16);
 
 
   // 4. Set clock divider
-  if (frequency < 2000) {
-    frequency = 2000;
+  if (frequency < 2000000) {
+    frequency = 2000000;
   }
-  float clock_divider = (float) clock_get_hz(clk_sys) / frequency * 1000;
+  float clock_divider = (float) clock_get_hz(clk_sys) / frequency;
   sm_config_set_clkdiv(&config, clock_divider);
 
   // 5. Configure input shift register
@@ -115,8 +139,7 @@ static inline void p_bus_init(PIO pio, uint sm, uint offset, uint base_pin, floa
 
 }
   
- static inline uint32_t p_bus_set(PIO pio, uint sm,uint32_t  rw, uint32_t v){
-    pio_sm_put_blocking(pio, sm, rw);
+ static inline uint32_t p_bus_set(PIO pio, uint sm,  uint32_t v){
     pio_sm_put_blocking(pio, sm, v);
     return pio_sm_get_blocking(pio, sm);
    }
