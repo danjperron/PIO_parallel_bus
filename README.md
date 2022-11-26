@@ -27,3 +27,5 @@ cmake ..
 make
 
 just copy the p_bus.uf2 to the pico in load mode  or use the openocd method.
+
+Don't forget to enable usb communication. On Pi use minicom -D /dev/ttyACM0
